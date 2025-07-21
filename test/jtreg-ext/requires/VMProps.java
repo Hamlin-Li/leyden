@@ -24,10 +24,10 @@
 package requires;
 
 import java.io.BufferedInputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.File;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,15 +48,14 @@ import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-
-import jdk.internal.foreign.CABI;
 import jdk.internal.misc.PreviewFeatures;
+import jdk.test.lib.Container;
+import jdk.test.lib.Platform;
+import jdk.test.whitebox.WhiteBox;
 import jdk.test.whitebox.code.Compiler;
 import jdk.test.whitebox.cpuinfo.CPUInfo;
 import jdk.test.whitebox.gc.GC;
-import jdk.test.whitebox.WhiteBox;
-import jdk.test.lib.Platform;
-import jdk.test.lib.Container;
+
 
 /**
  * The Class to be invoked by jtreg prior Test Suite execution to
@@ -480,7 +479,7 @@ public class VMProps implements Callable<Map<String, String>> {
       if ("true".equals(vmCDSSupportsAOTClassLinking()) &&
           !"zero".equals(vmFlavor()) &&
           "false".equals(vmJvmciEnabled()) &&
-          (Platform.isX64() || Platform.isAArch64())) {
+          (Platform.isX64() || Platform.isAArch64() || Platform.isRISCV64())) {
         return "true";
       } else {
         return "false";
