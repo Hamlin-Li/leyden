@@ -847,7 +847,7 @@ void InterpreterRuntime::resolve_get_put(Bytecodes::Code bytecode, int field_ind
   Bytecodes::Code get_code = (Bytecodes::Code)0;
   Bytecodes::Code put_code = (Bytecodes::Code)0;
   if (!uninitialized_static || VM_Version::supports_fast_class_init_checks()) {
-#if !defined(X86) && !defined(AARCH64)
+#if !defined(X86) && !defined(AARCH64) && !defined(RISCV64)
     guarantee(!uninitialized_static, "fast class init checks missing in interpreter"); // FIXME
 #endif // !X86 && !AARCH64
     get_code = ((is_static) ? Bytecodes::_getstatic : Bytecodes::_getfield);
