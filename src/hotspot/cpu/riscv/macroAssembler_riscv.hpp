@@ -28,6 +28,7 @@
 #define CPU_RISCV_MACROASSEMBLER_RISCV_HPP
 
 #include "asm/assembler.inline.hpp"
+#include "code/aotCodeCache.hpp"
 #include "code/vmreg.hpp"
 #include "metaprogramming/enableIf.hpp"
 #include "oops/compressedOops.hpp"
@@ -1239,11 +1240,16 @@ public:
   void far_call(const Address &entry, Register tmp = t1);
   void far_jump(const Address &entry, Register tmp = t1);
 
+  // TODO
   static int far_branch_size() {
       return 2 * 4;  // auipc + jalr, see far_call() & far_jump()
   }
 
+  // Load the base of the cardtable byte map into reg.
   void load_byte_map_base(Register reg);
+
+  // Load a constant address in the AOT Runtime Constants area
+  void load_aotrc_address(Register reg, address a);
 
   void bang_stack_with_offset(int offset) {
     // stack grows down, caller passes positive offset

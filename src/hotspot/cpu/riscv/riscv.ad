@@ -2876,6 +2876,18 @@ operand immByteMapBase()
   interface(CONST_INTER);
 %}
 
+// AOT Runtime Constants Address
+operand immAOTRuntimeConstantsAddress()
+%{
+  // Check if the address is in the range of AOT Runtime Constants
+  predicate(AOTRuntimeConstants::contains((address)(n->get_ptr())));
+  match(ConP);
+
+  op_cost(0);
+  format %{ %}
+  interface(CONST_INTER);
+%}
+
 // Int Immediate: low 16-bit mask
 operand immI_16bits()
 %{
@@ -4843,6 +4855,19 @@ instruct loadByteMapBase(iRegPNoSp dst, immByteMapBase con)
   format %{ "mv  $dst, $con\t# Byte Map Base, #@loadByteMapBase" %}
 
   ins_encode(riscv_enc_mov_byte_map_base(dst));
+
+  ins_pipe(ialu_imm);
+%}
+
+instruct loadAOTRCAddress(iRegPNoSp dst, immAOTRuntimeConstantsAddress con)
+%{
+  match(Set dst con);
+  ins_cost(ALU_COST);
+  format %{ "mv  $dst, $con\t# AOT Runtime Constants Address" %}
+
+  ins_encode %{
+    __ load_aotrc_address($dst$$Register, (address)$con$$constant);
+  %}
 
   ins_pipe(ialu_imm);
 %}

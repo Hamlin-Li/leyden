@@ -24,6 +24,9 @@
  */
 
 #include "asm/macroAssembler.inline.hpp"
+#if INCLUDE_CDS
+#include "code/aotCodeCache.hpp"
+#endif
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -197,15 +200,45 @@ static void generate_post_barrier_fast_path(MacroAssembler* masm,
                                             Label& done,
                                             bool new_val_may_be_null) {
   // Does store cross heap regions?
-  __ xorr(tmp1, store_addr, new_val);                    // tmp1 := store address ^ new value
-  __ srli(tmp1, tmp1, G1HeapRegion::LogOfHRGrainBytes);  // tmp1 := ((store address ^ new value) >> LogOfHRGrainBytes)
-  __ beqz(tmp1, done);
+#if INCLUDE_CDS
+  // AOT code needs to load the barrier grain shift from the aot
+  // runtime constants area in the code cache otherwise we can compile
+  // it as an immediate operand
+  if (AOTCodeCache::is_on_for_dump()) {
+    address grain_shift_address = (address)AOTRuntimeConstants::grain_shift_address();
+    __ xorr(tmp1, store_addr, new_val);                    // tmp1 := store address ^ new value
+    __ la(tmp2, ExternalAddress(grain_shift_address));
+    __ lb(tmp2, tmp2);
+    __ srl(tmp1, tmp1, tmp2);
+    __ beqz(tmp1, done);
+  } else
+#endif
+  {
+    __ xorr(tmp1, store_addr, new_val);                    // tmp1 := store address ^ new value
+    __ srli(tmp1, tmp1, G1HeapRegion::LogOfHRGrainBytes);  // tmp1 := ((store address ^ new value) >> LogOfHRGrainBytes)
+    __ beqz(tmp1, done);
+  }
+
   // Crosses regions, storing null?
   if (new_val_may_be_null) {
     __ beqz(new_val, done);
   }
+
   // Storing region crossing non-null, is card young?
-  __ srli(tmp1, store_addr, CardTable::card_shift());    // tmp1 := card address relative to card table base
+#if INCLUDE_CDS
+  // AOT code needs to load the barrier card shift from the aot
+  // runtime constants area in the code cache otherwise we can compile
+  // it as an immediate operand
+  if (AOTCodeCache::is_on_for_dump()) {
+    address card_shift_address = (address)AOTRuntimeConstants::card_shift_address();
+    __ la(tmp2, ExternalAddress(card_shift_address));
+    __ lb(tmp2, tmp2);
+    __ srl(tmp1, store_addr, tmp2);                       // tmp1 := card address relative to card table base
+  } else
+#endif
+  {
+    __ srli(tmp1, store_addr, CardTable::card_shift());    // tmp1 := card address relative to card table base
+  }
   __ load_byte_map_base(tmp2);                           // tmp2 := card table base address
   __ add(tmp1, tmp1, tmp2);                              // tmp1 := card address
   __ lbu(tmp2, Address(tmp1));                           // tmp2 := card

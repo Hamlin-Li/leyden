@@ -26,6 +26,7 @@
 
 #include "asm/macroAssembler.hpp"
 #include "asm/macroAssembler.inline.hpp"
+#include "code/aotCodeCache.hpp"
 #include "compiler/oopMap.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetAssembler.hpp"
@@ -3200,6 +3201,9 @@ class StubGenerator: public StubCodeGenerator {
 
     address entry = __ pc();
 
+    if (AOTCodeCache::load_stub(this, vmIntrinsics::_mulAdd, "mulAdd", entry)) {
+      return entry;
+    }
     const Register out     = x10;
     const Register in      = x11;
     const Register offset  = x12;
@@ -3213,6 +3217,7 @@ class StubGenerator: public StubCodeGenerator {
     __ leave();
     __ ret();
 
+    AOTCodeCache::store_stub(this, vmIntrinsics::_mulAdd, "mulAdd", entry);
     return entry;
   }
 
@@ -3233,6 +3238,9 @@ class StubGenerator: public StubCodeGenerator {
     StubCodeMark mark(this, stub_id);
     address entry = __ pc();
 
+    if (AOTCodeCache::load_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", entry)) {
+      return entry;
+    }
     const Register x     = x10;
     const Register xlen  = x11;
     const Register y     = x12;
@@ -3254,6 +3262,7 @@ class StubGenerator: public StubCodeGenerator {
     __ leave(); // required for proper stackwalking of RuntimeStub frame
     __ ret();
 
+    AOTCodeCache::store_stub(this, vmIntrinsics::_multiplyToLen, "multiplyToLen", entry);
     return entry;
   }
 
@@ -3264,6 +3273,9 @@ class StubGenerator: public StubCodeGenerator {
     StubCodeMark mark(this, stub_id);
     address entry = __ pc();
 
+    if (AOTCodeCache::load_stub(this, vmIntrinsics::_squareToLen, "squareToLen", entry)) {
+      return entry;
+    }
     const Register x     = x10;
     const Register xlen  = x11;
     const Register z     = x12;
@@ -3287,6 +3299,7 @@ class StubGenerator: public StubCodeGenerator {
     __ leave();
     __ ret();
 
+    AOTCodeCache::store_stub(this, vmIntrinsics::_squareToLen, "squareToLen", entry);
     return entry;
   }
 

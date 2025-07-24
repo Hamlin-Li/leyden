@@ -779,6 +779,7 @@ void MacroAssembler::unimplemented(const char* what) {
   stop(buf);
 }
 
+// TODO
 void MacroAssembler::emit_static_call_stub() {
   IncompressibleScope scope(this); // Fixed length: see CompiledDirectCall::to_interp_stub_size().
   // CompiledDirectCall::set_to_interpreted knows the
@@ -2623,7 +2624,7 @@ int MacroAssembler::patch_oop(address insn_addr, address o) {
 
 void MacroAssembler::reinit_heapbase() {
   if (UseCompressedOops) {
-    if (Universe::is_fully_initialized()) {
+    if (Universe::is_fully_initialized() && !AOTCodeCache::is_on_for_dump()) {
       mv(xheapbase, CompressedOops::base());
     } else {
       ld(xheapbase, ExternalAddress(CompressedOops::base_addr()));
@@ -3107,6 +3108,7 @@ void MacroAssembler::orptr(Address adr, RegisterOrConstant src, Register tmp1, R
   sd(tmp1, adr);
 }
 
+// TODO
 void MacroAssembler::cmp_klass_compressed(Register oop, Register trial_klass, Register tmp, Label &L, bool equal) {
   if (UseCompactObjectHeaders) {
     load_narrow_klass_compact(tmp, oop);
@@ -4901,7 +4903,30 @@ void MacroAssembler::get_thread(Register thread) {
 void MacroAssembler::load_byte_map_base(Register reg) {
   CardTable::CardValue* byte_map_base =
     ((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base();
-  mv(reg, (uint64_t)byte_map_base);
+
+#if INCLUDE_CDS
+  if (AOTCodeCache::is_on_for_dump()) {
+    // AOT code needs relocation info for card table base
+    la(reg, ExternalAddress(reinterpret_cast<address>(byte_map_base)));
+  } else
+#endif
+  {
+    mv(reg, (uint64_t)byte_map_base);
+  }
+}
+
+void MacroAssembler::load_aotrc_address(Register reg, address a) {
+#if INCLUDE_CDS
+  assert(AOTRuntimeConstants::contains(a), "address out of range for data area");
+  if (AOTCodeCache::is_on_for_dump()) {
+    // all aotrc field addresses should be registered in the AOTCodeCache address table
+    la(reg, ExternalAddress(a));
+  } else {
+    mv(reg, (uint64_t)a);
+  }
+#else
+  ShouldNotReachHere();
+#endif
 }
 
 void MacroAssembler::build_frame(int framesize) {
