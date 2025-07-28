@@ -2260,7 +2260,7 @@ encode %{
       } else if (rtype == relocInfo::metadata_type) {
         __ mov_metadata(dst_reg, (Metadata*)con);
       } else {
-        assert(rtype == relocInfo::none, "unexpected reloc type");
+        assert(rtype == relocInfo::none, "unexpected reloc type, %d", rtype);
         __ mv(dst_reg, $src$$constant);
       }
     }
@@ -2269,10 +2269,6 @@ encode %{
   enc_class riscv_enc_mov_p1(iRegP dst) %{
     Register dst_reg = as_Register($dst$$reg);
     __ mv(dst_reg, 1);
-  %}
-
-  enc_class riscv_enc_mov_byte_map_base(iRegP dst) %{
-    __ load_byte_map_base($dst$$Register);
   %}
 
   enc_class riscv_enc_mov_n(iRegN dst, immN src) %{
@@ -2867,8 +2863,7 @@ operand immByteMapBase()
   // Get base of card map
   predicate(BarrierSet::barrier_set()->is_a(BarrierSet::CardTableBarrierSet) &&
             SHENANDOAHGC_ONLY(!BarrierSet::barrier_set()->is_a(BarrierSet::ShenandoahBarrierSet) &&)
-            (CardTable::CardValue*)n->get_ptr() ==
-             ((CardTableBarrierSet*)(BarrierSet::barrier_set()))->card_table()->byte_map_base());
+            is_card_table_address((address)(n->get_ptr())));
   match(ConP);
 
   op_cost(0);
@@ -4851,10 +4846,13 @@ instruct loadConP1(iRegPNoSp dst, immP_1 con)
 instruct loadByteMapBase(iRegPNoSp dst, immByteMapBase con)
 %{
   match(Set dst con);
+
   ins_cost(ALU_COST);
   format %{ "mv  $dst, $con\t# Byte Map Base, #@loadByteMapBase" %}
 
-  ins_encode(riscv_enc_mov_byte_map_base(dst));
+  ins_encode %{
+    __ load_byte_map_base($dst$$Register);
+  %}
 
   ins_pipe(ialu_imm);
 %}
@@ -4862,6 +4860,7 @@ instruct loadByteMapBase(iRegPNoSp dst, immByteMapBase con)
 instruct loadAOTRCAddress(iRegPNoSp dst, immAOTRuntimeConstantsAddress con)
 %{
   match(Set dst con);
+
   ins_cost(ALU_COST);
   format %{ "mv  $dst, $con\t# AOT Runtime Constants Address" %}
 
