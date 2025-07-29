@@ -340,7 +340,7 @@ public:
   // a subroutine for debugging the GC
   static address verify_oop_subroutine_entry_address()     { return (address)&_verify_oop_subroutine_entry; }
 
-  static CallStub call_stub()                              { return CAST_TO_FN_PTR(CallStub, _call_stub_entry); }
+  static CallStub call_stub()                              { assert(_call_stub_entry != nullptr, ""); return CAST_TO_FN_PTR(CallStub, _call_stub_entry); }
 
   static address select_arraycopy_function(BasicType t, bool aligned, bool disjoint, const char* &name, bool dest_uninitialized);
 
@@ -359,6 +359,12 @@ public:
   static address arrayof_oop_disjoint_arraycopy(bool dest_uninitialized = false) {
     return dest_uninitialized ? _arrayof_oop_disjoint_arraycopy_uninit : _arrayof_oop_disjoint_arraycopy;
   }
+
+  // These methods is implemented in architecture-specific code.
+  // Any table that is returned must be allocated once-only in
+  // foreign memory (or C heap) rather generated in the code cache.
+  static address crc_table_addr();
+  static address crc32c_table_addr();
 
   typedef void (*DataCacheWritebackStub)(void *);
   static DataCacheWritebackStub DataCacheWriteback_stub()         { return CAST_TO_FN_PTR(DataCacheWritebackStub,  _data_cache_writeback); }

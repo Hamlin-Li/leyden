@@ -723,6 +723,8 @@ void VM_PopulateDumpSharedSpace::doit() {
   _map_info->set_serialized_data(serialized_data);
   _map_info->set_cloned_vtables(CppVtables::vtables_serialized_base());
   _map_info->header()->set_class_location_config(cl_config);
+
+  HeapShared::delete_tables_with_raw_oops();
 }
 
 class CollectClassesForLinking : public KlassClosure {
@@ -1091,17 +1093,20 @@ void MetaspaceShared::preload_and_dump_impl(StaticArchiveBuilder& builder, TRAPS
         TrainingData::print_archived_training_data_on(tty);
       }
 
-      CDSConfig::enable_dumping_aot_code();
       {
         builder.start_ac_region();
         if (AOTCodeCache::is_dumping_code()) {
-          Precompiler::compile_cached_code(&builder, CHECK);
+          CDSConfig::enable_dumping_aot_code();
+          log_info(aot)("Compiling AOT code");
+          Precompiler::compile_aot_code(&builder, CHECK);
+          log_info(aot)("Finished compiling AOT code");
+          CDSConfig::disable_dumping_aot_code();
         }
         // Write the contents to aot code region and close AOTCodeCache before packing the region
         AOTCodeCache::close();
+        log_info(aot)("Dumped AOT code Cache");
         builder.end_ac_region();
       }
-      CDSConfig::disable_dumping_aot_code();
     }
   }
 
@@ -2106,10 +2111,7 @@ void MetaspaceShared::initialize_shared_spaces() {
 
     TrainingData::print_archived_training_data_on(tty);
 
-    if (AOTCodeCache::is_on_for_use()) {
-      tty->print_cr("\n\nAOT Code");
-      AOTCodeCache::print_on(tty);
-    }
+    AOTCodeCache::print_on(tty);
 
     // collect shared symbols and strings
     CountSharedSymbols cl;
