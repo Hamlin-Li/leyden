@@ -24,9 +24,7 @@
  */
 
 #include "asm/macroAssembler.inline.hpp"
-#if INCLUDE_CDS
 #include "code/aotCodeCache.hpp"
-#endif
 #include "gc/g1/g1BarrierSet.hpp"
 #include "gc/g1/g1BarrierSetAssembler.hpp"
 #include "gc/g1/g1BarrierSetRuntime.hpp"
@@ -303,7 +301,7 @@ static void generate_c2_barrier_runtime_call(MacroAssembler* masm, G1BarrierStub
     __ mv(c_rarg0, arg);
   }
   __ mv(c_rarg1, xthread);
-  __ mv(t1, runtime_path);
+  __ la(t1, RuntimeAddress(runtime_path));
   __ jalr(t1);
 }
 
