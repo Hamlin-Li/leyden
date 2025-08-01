@@ -108,7 +108,8 @@ address NativeFarCall::reloc_destination(address orig_address) {
   }
 
   if (stub_addr != nullptr) {
-    stub_addr = MacroAssembler::target_addr_for_insn(call_addr);
+    // stub_addr = MacroAssembler::target_addr_for_insn(call_addr);
+    return stub_address_destination_at(stub_addr);
   }
   return stub_addr;
 }
@@ -162,6 +163,7 @@ bool NativeFarCall::reloc_set_destination(address dest) {
 
   if (stub_addr != nullptr) {
     MacroAssembler::pd_patch_instruction_size(call_addr, stub_addr);
+    set_stub_address_destination_at(stub_addr, dest);
   }
 
   return true;
@@ -283,6 +285,18 @@ NativeCall* nativeCall_before(address return_address) {
   call = (NativeCall*)(return_address - NativeFarCall::return_address_offset);
   DEBUG_ONLY(call->verify());
   return call;
+}
+
+address NativeCallTrampolineStub::destination() const {
+  address stub_addr = addr_at(0);
+  assert_cond(stub_addr != nullptr);
+  return (address)get_data64_at(stub_addr);
+}
+
+void NativeCallTrampolineStub::set_destination(address new_destination) {
+  address stub_addr = addr_at(0);
+  set_data64_at(stub_addr, (uint64_t)new_destination);
+  OrderAccess::release();
 }
 
 //-------------------------------------------------------------------

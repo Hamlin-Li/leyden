@@ -1289,7 +1289,7 @@ class trampoline_stub_Relocation : public Relocation {
 
   void pack_data_to(CodeSection * dest) override;
   void unpack_data() override;
-#if defined(AARCH64) && !defined(ZERO)
+#if (defined(AARCH64) || defined(RISCV64)) && !defined(ZERO)
   address pd_destination     ();
   void    pd_set_destination (address x);
 #else

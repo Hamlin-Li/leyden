@@ -149,6 +149,22 @@ class NativeCall: private NativeInstruction {
   static bool is_call_before(address return_address);
 };
 
+// Call trampoline stubs.
+class NativeCallTrampolineStub : public NativeInstruction {
+public:
+
+  enum {
+    instruction_size            =    2 * Assembler::instruction_size
+  };
+
+  address destination() const;
+  void set_destination(address new_destination);
+};
+
+inline NativeCallTrampolineStub* nativeCallTrampolineStub_at(address addr) {
+  return (NativeCallTrampolineStub*)addr;
+}
+
 // An interface for accessing/manipulating native mov reg, imm instructions.
 // (used to manipulate inlined 64-bit data calls, etc.)
 class NativeMovConstReg: public NativeInstruction {
