@@ -1080,6 +1080,10 @@ address TemplateInterpreterGenerator::generate_native_entry(bool synchronized, b
   // jvmti support
   __ notify_method_entry();
 
+  if (runtime_upcalls) {
+    __ generate_runtime_upcalls_on_method_entry();
+  }
+
   // work registers
   const Register t = x18;
   const Register result_handler = x19;
@@ -1560,6 +1564,11 @@ address TemplateInterpreterGenerator::generate_normal_entry(bool synchronized, b
 
   // jvmti support
   __ notify_method_entry();
+
+  // runtime upcalls
+  if (runtime_upcalls) {
+    __ generate_runtime_upcalls_on_method_entry();
+  }
 
   __ dispatch_next(vtos);
 
