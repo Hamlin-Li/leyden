@@ -2863,7 +2863,6 @@ operand immByteMapBase()
 %{
   // Get base of card map
   predicate(BarrierSet::barrier_set()->is_a(BarrierSet::CardTableBarrierSet) &&
-            SHENANDOAHGC_ONLY(!BarrierSet::barrier_set()->is_a(BarrierSet::ShenandoahBarrierSet) &&)
             is_card_table_address((address)(n->get_ptr())));
   match(ConP);
 
