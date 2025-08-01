@@ -3394,6 +3394,16 @@ void AOTCodeAddressTable::init_stubs() {
   SET_ADDRESS(_stubs, StubRoutines::aarch64::large_arrays_hashcode(T_CHAR));
   SET_ADDRESS(_stubs, StubRoutines::aarch64::large_arrays_hashcode(T_INT));
 #endif
+#if defined(RISCV64) && !defined(ZERO)
+  SET_ADDRESS(_stubs, StubRoutines::riscv::zero_blocks());
+  SET_ADDRESS(_stubs, StubRoutines::riscv::compare_long_string_LL());
+  SET_ADDRESS(_stubs, StubRoutines::riscv::compare_long_string_UU());
+  SET_ADDRESS(_stubs, StubRoutines::riscv::compare_long_string_LU());
+  SET_ADDRESS(_stubs, StubRoutines::riscv::compare_long_string_UL());
+  SET_ADDRESS(_stubs, StubRoutines::riscv::string_indexof_linear_ll());
+  SET_ADDRESS(_stubs, StubRoutines::riscv::string_indexof_linear_uu());
+  SET_ADDRESS(_stubs, StubRoutines::riscv::string_indexof_linear_ul());
+#endif
 
   _complete = true;
   log_info(aot, codecache, init)("Stubs recorded");
