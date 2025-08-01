@@ -330,6 +330,17 @@ void TemplateTable::ldc(LdcType type) {
   __ mv(t1, (u1)JVM_CONSTANT_Class);
   __ bne(x13, t1, notClass);
 
+  __ load_resolved_klass_at_offset(x12, x11, x13, t0); // kills r3=tag
+
+  __ beqz(x13, call_ldc); // resolved_klass ?= null
+
+  const int mirror_offset = in_bytes(Klass::java_mirror_offset());
+  __ ld(x13, Address(x13, mirror_offset));
+  __ resolve_oop_handle(x13, t0, t1);
+  __ push_ptr(x13);
+
+  __ j(Done);
+
   __ bind(call_ldc);
   __ mv(c_rarg1, is_ldc_wide(type) ? 1 : 0);
   call_VM(x10, CAST_FROM_FN_PTR(address, InterpreterRuntime::ldc), c_rarg1);
@@ -2236,7 +2247,7 @@ void TemplateTable::resolve_cache_and_index_for_field(int byte_no,
   const Register temp = x9;
   assert_different_registers(Rcache, index, temp);
 
-  Label resolved;
+  Label resolved, clinit_barrier_slow;
 
   Bytecodes::Code code = bytecode();
   switch (code) {
@@ -2259,6 +2270,7 @@ void TemplateTable::resolve_cache_and_index_for_field(int byte_no,
   __ beq(temp, t0, resolved);
 
   // resolve first time through
+  __ bind(clinit_barrier_slow);
   address entry = CAST_FROM_FN_PTR(address, InterpreterRuntime::resolve_from_cache);
   __ mv(temp, (int) code);
   __ call_VM(noreg, entry, temp);
@@ -2266,6 +2278,13 @@ void TemplateTable::resolve_cache_and_index_for_field(int byte_no,
   // Update registers with resolved info
   __ load_field_entry(Rcache, index);
   __ bind(resolved);
+
+  // Class initialization barrier for static fields
+  if (VM_Version::supports_fast_class_init_checks() &&
+      (bytecode() == Bytecodes::_getstatic || bytecode() == Bytecodes::_putstatic)) {
+    __ ld(temp, Address(Rcache, ResolvedFieldEntry::field_holder_offset()));
+    __ clinit_barrier(temp, t0, nullptr, &clinit_barrier_slow);
+  }
 }
 
 void TemplateTable::load_resolved_field_entry(Register obj,
