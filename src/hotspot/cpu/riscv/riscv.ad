@@ -2832,29 +2832,29 @@ operand immP_1()
 %}
 
 // Card Table Byte Map Base
-operand immByteMapBase()
-%{
-  // Get base of card map
-  predicate(BarrierSet::barrier_set()->is_a(BarrierSet::CardTableBarrierSet) &&
-            is_card_table_address((address)(n->get_ptr())));
-  match(ConP);
-
-  op_cost(0);
-  format %{ %}
-  interface(CONST_INTER);
-%}
-
-// AOT Runtime Constants Address
-operand immAOTRuntimeConstantsAddress()
-%{
-  // Check if the address is in the range of AOT Runtime Constants
-  predicate(AOTRuntimeConstants::contains((address)(n->get_ptr())));
-  match(ConP);
-
-  op_cost(0);
-  format %{ %}
-  interface(CONST_INTER);
-%}
+// operand immByteMapBase()
+// %{
+//   // Get base of card map
+//   predicate(BarrierSet::barrier_set()->is_a(BarrierSet::CardTableBarrierSet) &&
+//             is_card_table_address((address)(n->get_ptr())));
+//   match(ConP);
+//
+//   op_cost(0);
+//   format %{ %}
+//   interface(CONST_INTER);
+// %}
+//
+// // AOT Runtime Constants Address
+// operand immAOTRuntimeConstantsAddress()
+// %{
+//   // Check if the address is in the range of AOT Runtime Constants
+//   predicate(AOTRuntimeConstants::contains((address)(n->get_ptr())));
+//   match(ConP);
+//
+//   op_cost(0);
+//   format %{ %}
+//   interface(CONST_INTER);
+// %}
 
 
 // Int Immediate: low 16-bit mask
@@ -4818,33 +4818,33 @@ instruct loadConP1(iRegPNoSp dst, immP_1 con)
 
 
 // Load Byte Map Base Constant
-instruct loadByteMapBase(iRegPNoSp dst, immByteMapBase con)
-%{
-  match(Set dst con);
-
-  ins_cost(ALU_COST);
-  format %{ "mv  $dst, $con\t# Byte Map Base, #@loadByteMapBase" %}
-
-  ins_encode %{
-    __ load_byte_map_base($dst$$Register);
-  %}
-
-  ins_pipe(ialu_imm);
-%}
-
-instruct loadAOTRCAddress(iRegPNoSp dst, immAOTRuntimeConstantsAddress con)
-%{
-  match(Set dst con);
-
-  ins_cost(ALU_COST);
-  format %{ "mv  $dst, $con\t# AOT Runtime Constants Address" %}
-
-  ins_encode %{
-    __ load_aotrc_address($dst$$Register, (address)$con$$constant);
-  %}
-
-  ins_pipe(ialu_imm);
-%}
+// instruct loadByteMapBase(iRegPNoSp dst, immByteMapBase con)
+// %{
+//   match(Set dst con);
+//
+//   ins_cost(ALU_COST);
+//   format %{ "mv  $dst, $con\t# Byte Map Base, #@loadByteMapBase" %}
+//
+//   ins_encode %{
+//     __ load_byte_map_base($dst$$Register);
+//   %}
+//
+//   ins_pipe(ialu_imm);
+// %}
+//
+// instruct loadAOTRCAddress(iRegPNoSp dst, immAOTRuntimeConstantsAddress con)
+// %{
+//   match(Set dst con);
+//
+//   ins_cost(ALU_COST);
+//   format %{ "mv  $dst, $con\t# AOT Runtime Constants Address" %}
+//
+//   ins_encode %{
+//     __ load_aotrc_address($dst$$Register, (address)$con$$constant);
+//   %}
+//
+//   ins_pipe(ialu_imm);
+// %}
 
 
 // Load Narrow Pointer Constant
