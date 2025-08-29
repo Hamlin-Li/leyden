@@ -29,7 +29,10 @@
 #include "memory/allocation.hpp"
 #include "nmt/memTag.hpp"
 #include "oops/oopsHierarchy.hpp"
+#include "runtime/stubInfo.hpp"
+#include "runtime/vm_version.hpp"
 #include "utilities/exceptions.hpp"
+#include "utilities/sizes.hpp"
 
 /*
  * AOT Code Cache collects code from Code Cache and corresponding metadata
@@ -92,16 +95,13 @@ public:
   };
 
 private:
-  Method*       _method;
-  uint   _method_offset;
   Kind   _kind;
-  uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or name's hash for nmethod
+  uint   _id;          // Adapter's id, vmIntrinsic::ID for stub or Method's offset in AOTCache for nmethod
   uint   _offset;      // Offset to entry
   uint   _size;        // Entry size
   uint   _name_offset; // Method's or intrinsic name
   uint   _name_size;
   uint   _num_inlined_bytecodes;
-
   uint   _code_offset; // Start of code in cache
   uint   _code_size;   // Total size of all code sections
 
@@ -121,7 +121,6 @@ public:
                uint code_offset, uint code_size,
                Kind kind, uint id) {
     assert(kind == AOTCodeEntry::Stub, "sanity check");
-    _method       = nullptr;
     _kind         = kind;
     _id           = id;
     _offset       = offset;
@@ -152,7 +151,6 @@ public:
                uint comp_id = 0,
                bool has_clinit_barriers = false,
                bool for_preload = false) {
-    _method       = nullptr;
     _kind         = kind;
     _id           = id;
     _offset       = offset;
@@ -183,10 +181,7 @@ public:
   // Delete is a NOP
   void operator delete( void *ptr ) {}
 
-  Method*   method()  const { return _method; }
-  void set_method(Method* method) { _method = method; }
-  void update_method_for_writing();
-  uint method_offset() const { return _method_offset; }
+  Method* method();
 
   Kind kind()         const { return _kind; }
   uint id()           const { return _id; }
@@ -320,10 +315,6 @@ protected:
     uint _contendedPaddingWidth;
     uint _objectAlignment;
     uint _gc;
-#if defined(IA32) || defined(AMD64)
-    int  _useSSE; // Hack before we record CPU features
-    int  _useAVX;
-#endif
     enum Flags {
       none                     = 0,
       debugVM                  = 2,
@@ -337,10 +328,11 @@ protected:
       preserveFramePointer     = 512
     };
     uint _flags;
+    uint _cpu_features_offset; // offset in the cache where cpu features are stored
 
   public:
-    void record();
-    bool verify() const;
+    void record(uint cpu_features_offset);
+    bool verify(AOTCodeCache* cache) const;
   };
 
   class Header : public CHeapObj<mtCode> {
@@ -354,6 +346,7 @@ protected:
     uint   _strings_count;   // number of recorded C strings
     uint   _strings_offset;  // offset to recorded C strings
     uint   _entries_count;   // number of recorded entries
+    uint   _search_table_offset; // offset of table for looking up an AOTCodeEntry
     uint   _entries_offset;  // offset of AOTCodeEntry array describing entries
     uint   _preload_entries_count; // entries for pre-loading code
     uint   _preload_entries_offset;
@@ -362,20 +355,22 @@ protected:
     uint   _C1_blobs_count;
     uint   _C2_blobs_count;
     uint   _stubs_count;
-    Config _config;
+    Config _config; // must be the last element as there is trailing data stored immediately after Config
 
   public:
     void init(uint cache_size,
               uint strings_count,  uint strings_offset,
-              uint entries_count,  uint entries_offset,
+              uint entries_count,  uint search_table_offset, uint entries_offset,
               uint preload_entries_count, uint preload_entries_offset,
               uint adapters_count, uint shared_blobs_count,
-              uint C1_blobs_count, uint C2_blobs_count, uint stubs_count) {
+              uint C1_blobs_count, uint C2_blobs_count,
+              uint stubs_count, uint cpu_features_offset) {
       _version        = AOT_CODE_VERSION;
       _cache_size     = cache_size;
       _strings_count  = strings_count;
       _strings_offset = strings_offset;
       _entries_count  = entries_count;
+      _search_table_offset = search_table_offset;
       _entries_offset = entries_offset;
       _preload_entries_count  = preload_entries_count;
       _preload_entries_offset = preload_entries_offset;
@@ -385,13 +380,14 @@ protected:
       _C2_blobs_count = C2_blobs_count;
       _stubs_count    = stubs_count;
 
-      _config.record();
+      _config.record(cpu_features_offset);
     }
 
     uint cache_size()     const { return _cache_size; }
     uint strings_count()  const { return _strings_count; }
     uint strings_offset() const { return _strings_offset; }
     uint entries_count()  const { return _entries_count; }
+    uint search_table_offset() const { return _search_table_offset; }
     uint entries_offset() const { return _entries_offset; }
     uint preload_entries_count()  const { return _preload_entries_count; }
     uint preload_entries_offset() const { return _preload_entries_offset; }
@@ -408,8 +404,8 @@ protected:
                                        - _adapters_count; }
 
     bool verify(uint load_size)  const;
-    bool verify_config() const { // Called after Universe initialized
-      return _config.verify();
+    bool verify_config(AOTCodeCache* cache) const { // Called after Universe initialized
+      return _config.verify(cache);
     }
   };
 
@@ -525,6 +521,8 @@ public:
   AOTCodeEntry* find_entry(AOTCodeEntry::Kind kind, uint id, uint comp_level = 0);
   void invalidate_entry(AOTCodeEntry* entry);
 
+  void store_cpu_features(char*& buffer, uint buffer_size);
+
   bool finish_write();
 
   void log_stats_on_exit();
@@ -554,19 +552,24 @@ public:
   bool write_dbg_strings(DbgStrings& dbg_strings, bool use_string_table);
 #endif // PRODUCT
 
+  // save and restore API for non-enumerable code blobs
   static bool store_code_blob(CodeBlob& blob,
                               AOTCodeEntry::Kind entry_kind,
-                              uint id, const char* name,
-                              int entry_offset_count = 0,
-                              int* entry_offsets = nullptr) NOT_CDS_RETURN_(false);
+                              uint id, const char* name) NOT_CDS_RETURN_(false);
 
   static CodeBlob* load_code_blob(AOTCodeEntry::Kind kind,
-                                  uint id, const char* name,
-                                  int entry_offset_count = 0,
-                                  int* entry_offsets = nullptr) NOT_CDS_RETURN_(nullptr);
+                                  uint id, const char* name) NOT_CDS_RETURN_(nullptr);
 
   static bool load_nmethod(ciEnv* env, ciMethod* target, int entry_bci, AbstractCompiler* compiler, CompLevel comp_level) NOT_CDS_RETURN_(false);
   static AOTCodeEntry* store_nmethod(nmethod* nm, AbstractCompiler* compiler, bool for_preload) NOT_CDS_RETURN_(nullptr);
+
+  // save and restore API for enumerable code blobs
+  static bool store_code_blob(CodeBlob& blob,
+                              AOTCodeEntry::Kind entry_kind,
+                              BlobId id) NOT_CDS_RETURN_(false);
+
+  static CodeBlob* load_code_blob(AOTCodeEntry::Kind kind,
+                                  BlobId id) NOT_CDS_RETURN_(nullptr);
 
   static uint store_entries_cnt() {
     if (is_on_for_dump()) {
@@ -585,7 +588,7 @@ private:
 
   bool verify_config_on_use() {
     if (for_use()) {
-      return _load_header->verify_config();
+      return _load_header->verify_config(this);
     }
     return true;
   }
@@ -676,7 +679,7 @@ public:
   // convenience method to convert offset in AOTCodeEntry data to its address
   bool compile_nmethod(ciEnv* env, ciMethod* target, AbstractCompiler* compiler);
 
-  CodeBlob* compile_code_blob(const char* name, int entry_offset_count, int* entry_offsets);
+  CodeBlob* compile_code_blob(const char* name);
 
   Klass* read_klass(const methodHandle& comp_method);
   Method* read_method(const methodHandle& comp_method);

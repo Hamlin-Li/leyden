@@ -22,6 +22,7 @@
  *
  */
 
+
 #include "cds/aotClassFilter.hpp"
 #include "cds/aotClassLocation.hpp"
 #include "cds/aotLogging.hpp"
@@ -37,7 +38,6 @@
 #include "cds/heapShared.hpp"
 #include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/lambdaProxyClassDictionary.hpp"
-#include "cds/lambdaFormInvokers.inline.hpp"
 #include "cds/metaspaceShared.hpp"
 #include "cds/runTimeClassInfo.hpp"
 #include "cds/unregisteredClasses.hpp"
@@ -45,9 +45,7 @@
 #include "classfile/classLoader.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/classLoaderDataGraph.hpp"
-#include "classfile/classLoaderExt.hpp"
 #include "classfile/dictionary.hpp"
-#include "classfile/javaClasses.hpp"
 #include "classfile/javaClasses.inline.hpp"
 #include "classfile/symbolTable.hpp"
 #include "classfile/systemDictionary.hpp"
@@ -78,7 +76,7 @@
 #include "runtime/java.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/mutexLocker.hpp"
-#include "utilities/resourceHash.hpp"
+#include "utilities/hashTable.hpp"
 #include "utilities/stringUtils.hpp"
 
 SystemDictionaryShared::ArchiveInfo SystemDictionaryShared::_static_archive;
@@ -299,7 +297,7 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
     // instrumentation in order to work with -XX:FlightRecorderOptions:retransform=false.
     // There are only a small number of these classes, so it's not worthwhile to
     // support them and make CDS more complicated.
-    if (!CDSConfig::is_dumping_reflection_data()) { // FIXME: !!! HACK !!!
+    if (!CDSConfig::is_dumping_reflection_data()) { // FIXME: !!! HACK !!! JDK-8365724
       return warn_excluded(k, "JFR event class");
     }
   }
@@ -353,6 +351,13 @@ bool SystemDictionaryShared::check_for_exclusion_impl(InstanceKlass* k) {
       aot_log_warning(aot)("Skipping %s: interface %s is excluded", k->name()->as_C_string(), intf->name()->as_C_string());
       return true;
     }
+  }
+
+  InstanceKlass* nest_host = k->nest_host_or_null();
+  if (nest_host != nullptr && nest_host != k && check_for_exclusion(nest_host, nullptr)) {
+    ResourceMark rm;
+    aot_log_warning(aot)("Skipping %s: nest_host class %s is excluded", k->name()->as_C_string(), nest_host->name()->as_C_string());
+    return true;
   }
 
   return false; // false == k should NOT be excluded
@@ -447,7 +452,7 @@ InstanceKlass* SystemDictionaryShared::find_or_load_shared_class(
   return k;
 }
 
-class UnregisteredClassesTable : public ResourceHashtable<
+class UnregisteredClassesTable : public HashTable<
   Symbol*, InstanceKlass*,
   15889, // prime number
   AnyObj::C_HEAP> {};
@@ -1188,6 +1193,12 @@ const char* SystemDictionaryShared::loader_type_for_shared_class(Klass* k) {
   } else {
     return "unknown loader";
   }
+}
+
+void SystemDictionaryShared::get_all_archived_classes(bool is_static_archive, GrowableArray<Klass*>* classes) {
+  get_archive(is_static_archive)->_builtin_dictionary.iterate([&] (const RunTimeClassInfo* record) {
+      classes->append(record->klass());
+    });
 }
 
 class SharedDictionaryPrinter : StackObj {

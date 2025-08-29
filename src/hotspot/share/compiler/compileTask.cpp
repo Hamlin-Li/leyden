@@ -44,7 +44,7 @@ CompileTask::CompileTask(int compile_id,
                          int comp_level,
                          int hot_count,
                          AOTCodeEntry* aot_code_entry,
-                         CompileTask::CompileReason compile_reason,
+                         CompileReason compile_reason,
                          CompileQueue* compile_queue,
                          bool requires_online_compilation,
                          bool is_blocking) {
@@ -90,12 +90,13 @@ CompileTask::CompileTask(int compile_id,
   _arena_bytes = 0;
 
   _next = nullptr;
+  _prev = nullptr;
 
-  Atomic::add(&_active_tasks, 1);
+  Atomic::add(&_active_tasks, 1, memory_order_relaxed);
 }
 
 CompileTask::~CompileTask() {
-  if ((_method_holder != nullptr && JNIHandles::is_weak_global_handle(_method_holder))) {
+  if (_method_holder != nullptr && JNIHandles::is_weak_global_handle(_method_holder)) {
     JNIHandles::destroy_weak_global(_method_holder);
   } else {
     JNIHandles::destroy_global(_method_holder);
@@ -106,7 +107,7 @@ CompileTask::~CompileTask() {
     _failure_reason_on_C_heap = false;
   }
 
-  if (Atomic::sub(&_active_tasks, 1) == 0) {
+  if (Atomic::sub(&_active_tasks, 1, memory_order_relaxed) == 0) {
     MonitorLocker wait_ml(CompileTaskWait_lock);
     wait_ml.notify_all();
   }
@@ -290,7 +291,14 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
 // CompileTask::print_compilation
 void CompileTask::print(outputStream* st, const char* msg, bool short_form, bool cr) {
   bool is_osr_method = osr_bci() != InvocationEntryBci;
-  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot_load(), preload(),
+  bool is_aot = is_aot_load();
+  bool is_preload = preload();
+  if (is_precompile()) {
+    // Tag aot compilation too
+    is_preload = (compile_reason() == Reason_PrecompileForPreload);
+    is_aot = !is_preload;
+  }
+  print_impl(st, is_unloaded() ? nullptr : method(), compile_id(), comp_level(), is_osr_method, osr_bci(), is_blocking(), is_aot, is_preload,
              compiler()->name(), msg, short_form, cr, _time_created, _time_queued, _time_started, _time_finished, _aot_load_start, _aot_load_finish);
 }
 
