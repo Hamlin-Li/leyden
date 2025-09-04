@@ -313,3 +313,52 @@ void VM_Version::rivos_features() {
     ext_Zihintpause.enable_feature();
   }
 }
+
+void VM_Version::insert_features_names(VM_Version::RVFeatures features, stringStream& ss) {
+  int i = 0;
+  ss.join([&]() {
+    const char* str = nullptr;
+    while ((i < RVFeatures::MAX_CPU_FEATURE_INDEX) && (str == nullptr)) {
+      if (features.supports_feature((RVFeatures::RVFeatureIndex)i)) {
+        str = _feature_list[i]->pretty();
+      }
+      i += 1;
+    }
+    return str;
+  }, ", ");
+}
+
+void VM_Version::get_cpu_features_name(void* features_buffer, stringStream& ss) {
+  RVFeatures* features = (RVFeatures*)features_buffer;
+  insert_features_names(*features, ss);
+}
+
+void VM_Version::get_missing_features_name(void* features_buffer, stringStream& ss) {
+  RVFeatures* features_to_test = (RVFeatures*)features_buffer;
+  int i = 0;
+  ss.join([&]() {
+    const char* str = nullptr;
+    while ((i < RVFeatures::MAX_CPU_FEATURE_INDEX) && (str == nullptr)) {
+      RVFeatures::RVFeatureIndex flag = (RVFeatures::RVFeatureIndex)i;
+      if (features_to_test->supports_feature(flag) && !RVFeatures::own()->supports_feature(flag)) {
+        str = _feature_list[i]->pretty();
+      }
+      i += 1;
+    }
+    return str;
+  }, ", ");
+}
+
+int VM_Version::cpu_features_size() {
+  return sizeof(RVFeatures);
+}
+
+void VM_Version::store_cpu_features(void* buf) {
+  RVFeatures copy = *RVFeatures::own();
+  memcpy(buf, &copy, sizeof(RVFeatures));
+}
+
+bool VM_Version::supports_features(void* features_buffer) {
+  RVFeatures* features_to_test = (RVFeatures*)features_buffer;
+  return RVFeatures::own()->supports_features(features_to_test);
+}
