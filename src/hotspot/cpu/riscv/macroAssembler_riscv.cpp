@@ -3407,12 +3407,17 @@ void MacroAssembler::decode_klass_not_null_for_aot(Register dst, Register src, R
   // not the shift because it is not allowed to change
   int shift = CompressedKlassPointers::shift();
   assert(shift >= 0 && shift <= CompressedKlassPointers::max_shift(), "unexpected compressed klass shift!");
-  assert_different_registers(src, tmp);
-  la(tmp, ExternalAddress(CompressedKlassPointers::base_addr()));
-  ld(tmp, tmp);
-  Register t = src == dst ? dst : t0;
-  assert_different_registers(t, tmp);
-  shadd(dst, src, tmp, t, shift);
+
+  Register base = tmp;
+  assert_different_registers(src, base);
+  // assert_different_registers(t0,  base); // this assert could fail.
+  // assert_different_registers(dst, base); // this assert could fail.
+  la(base, ExternalAddress(CompressedKlassPointers::base_addr()));
+  ld(base, base);
+  Register t = dst == base ? t0 : dst;
+  assert_different_registers(t, base);
+  // dst = (src << shift) + base
+  shadd(dst, src, base, t, shift);
 }
 
 void MacroAssembler::decode_klass_not_null(Register r, Register tmp) {
@@ -3446,8 +3451,11 @@ void MacroAssembler::decode_klass_not_null(Register dst, Register src, Register 
   mv(xbase, (uintptr_t)CompressedKlassPointers::base());
 
   if (CompressedKlassPointers::shift() != 0) {
-    Register t = src == dst ? dst : t0;
+    assert_different_registers(t0,  xbase); // this assert does not fail.
+    assert_different_registers(dst, xbase); // this assert does not fail.
+    Register t = dst == xbase ? t0 : dst;
     assert_different_registers(t, xbase);
+    // dst = (src << shift) + xbase
     shadd(dst, src, xbase, t, CompressedKlassPointers::shift());
   } else {
     add(dst, xbase, src);
@@ -3459,11 +3467,11 @@ void MacroAssembler::encode_klass_not_null_for_aot(Register dst, Register src, R
   // not the shift because it is not allowed to change
   int shift = CompressedKlassPointers::shift();
   assert(shift >= 0 && shift <= CompressedKlassPointers::max_shift(), "unexpected compressed klass shift!");
-  assert_different_registers(src, tmp);
   Register xbase = dst;
   if (dst == src) {
     xbase = tmp;
   }
+  assert_different_registers(src, xbase);
   la(xbase, ExternalAddress(CompressedKlassPointers::base_addr()));
   ld(xbase, xbase);
   sub(dst, src, xbase);
