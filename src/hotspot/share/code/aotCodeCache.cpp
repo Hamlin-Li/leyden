@@ -3653,6 +3653,7 @@ const char* AOTCodeAddressTable::add_C_string(const char* str) {
       assert(false, "Number of C strings >= MAX_STR_COUNT");
     }
   }
+  ShouldNotReachHere();
   return str;
 }
 
