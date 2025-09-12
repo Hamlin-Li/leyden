@@ -25,10 +25,10 @@
  */
 
 #include "cds/aotLinkedClassBulkLoader.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/heapShared.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "cds/methodProfiler.hpp"
 #include "classfile/classLoader.hpp"
 #include "classfile/javaClasses.hpp"
@@ -41,8 +41,8 @@
 #include "code/aotCodeCache.hpp"
 #include "compiler/compilationPolicy.hpp"
 #include "compiler/compileBroker.hpp"
-#include "compiler/compileTask.hpp"
 #include "compiler/compilerThread.hpp"
+#include "compiler/compileTask.hpp"
 #include "compiler/precompiler.hpp"
 #include "gc/shared/barrierSet.hpp"
 #include "gc/shared/barrierSetNMethod.hpp"
@@ -97,13 +97,13 @@
 #include "runtime/stackWatermarkSet.inline.hpp"
 #include "runtime/stubCodeGenerator.hpp"
 #include "runtime/thread.inline.hpp"
-#include "runtime/threadSMR.inline.hpp"
 #include "runtime/threads.hpp"
+#include "runtime/threadSMR.inline.hpp"
 #include "runtime/timer.hpp"
 #include "runtime/timerTrace.hpp"
 #include "runtime/trimNativeHeap.hpp"
-#include "runtime/vmOperations.hpp"
 #include "runtime/vm_version.hpp"
+#include "runtime/vmOperations.hpp"
 #include "services/attachListener.hpp"
 #include "services/management.hpp"
 #include "services/threadIdTable.hpp"
@@ -387,6 +387,15 @@ void Threads::initialize_java_lang_classes(JavaThread* main_thread, TRAPS) {
   // The VM preresolves methods to these classes. Make sure that they get initialized
   initialize_class(vmSymbols::java_lang_reflect_Method(), CHECK);
   initialize_class(vmSymbols::java_lang_ref_Finalizer(), CHECK);
+
+  if (CDSConfig::is_using_aot_linked_classes()) {
+    // This is necessary for reflection to work in early core lib bootstrap code.
+    vmClasses::reflect_AccessibleObject_klass()->link_class(CHECK);
+    vmClasses::reflect_Field_klass()->link_class(CHECK);
+    vmClasses::reflect_Parameter_klass()->link_class(CHECK);
+    vmClasses::reflect_Method_klass()->link_class(CHECK);
+    vmClasses::reflect_Constructor_klass()->link_class(CHECK);
+  }
 
   // Phase 1 of the system initialization in the library, java.lang.System class initialization
   call_initPhase1(CHECK);
@@ -935,10 +944,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   if (CDSConfig::is_dumping_classic_static_archive()) {
     // Classic -Xshare:dump, aka "old workflow"
-    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
+    AOTMetaspace::preload_and_dump(CHECK_JNI_ERR);
   } else if (CDSConfig::is_dumping_final_static_archive()) {
     tty->print_cr("Reading AOTConfiguration %s and writing AOTCache %s", AOTConfiguration, AOTCache);
-    MetaspaceShared::preload_and_dump(CHECK_JNI_ERR);
+    AOTMetaspace::preload_and_dump(CHECK_JNI_ERR);
   }
 
   log_info(init)("At VM initialization completion:");
@@ -1068,6 +1077,12 @@ void Threads::destroy_vm() {
   // daemon threads executing native code are still running.  But they
   // will be stopped at native=>Java/VM barriers. Note that we can't
   // simply kill or suspend them, as it is inherently deadlock-prone.
+
+  #if INCLUDE_CDS
+  if (AOTVerifyTrainingData) {
+    TrainingData::verify();
+  }
+  #endif
 
   VM_Exit::set_vm_exited();
 

@@ -26,7 +26,9 @@
 #include "cds/aotCacheAccess.hpp"
 #include "cds/aotClassInitializer.hpp"
 #include "cds/aotClassLocation.hpp"
+#include "cds/aotConstantPoolResolver.hpp"
 #include "cds/aotLogging.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/aotReferenceObjSupport.hpp"
 #include "cds/archiveBuilder.hpp"
 #include "cds/archiveHeapLoader.hpp"
@@ -36,7 +38,6 @@
 #include "cds/cdsEnumKlass.hpp"
 #include "cds/cdsHeapVerifier.hpp"
 #include "cds/heapShared.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "cds/regeneratedClasses.hpp"
 #include "classfile/classLoaderData.hpp"
 #include "classfile/javaClasses.inline.hpp"
@@ -239,7 +240,7 @@ static void reset_states(oop obj, TRAPS) {
       JavaCalls::call_special(&result, h_obj, klass,
                               method_name, method_sig, CHECK);
     }
-    klass = klass->java_super();
+    klass = klass->super();
   }
 }
 
@@ -753,11 +754,6 @@ void HeapShared::copy_and_rescan_aot_inited_mirror(InstanceKlass* ik) {
       case T_ARRAY:
         {
           oop field_obj = orig_mirror->obj_field(offset);
-          if (offset == java_lang_Class::reflection_data_offset()) {
-            // Class::reflectData use SoftReference, which cannot be archived. Set it
-            // to null and it will be recreated at runtime.
-            field_obj = nullptr;
-          }
           m->obj_field_put(offset, field_obj);
           if (field_obj != nullptr) {
             bool success = archive_reachable_objects_from(1, _dump_time_special_subgraph, field_obj);
@@ -811,7 +807,7 @@ void HeapShared::copy_and_rescan_aot_inited_mirror(InstanceKlass* ik) {
   }
 }
 
-static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
+void HeapShared::copy_java_mirror(oop orig_mirror, oop scratch_m) {
   // We need to retain the identity_hash, because it may have been used by some hashtables
   // in the shared heap.
   if (!orig_mirror->fast_no_hash_check()) {
@@ -826,6 +822,14 @@ static void copy_java_mirror_hashcode(oop orig_mirror, oop scratch_m) {
 
     DEBUG_ONLY(intptr_t archived_hash = scratch_m->identity_hash());
     assert(src_hash == archived_hash, "Different hash codes: original " INTPTR_FORMAT ", archived " INTPTR_FORMAT, src_hash, archived_hash);
+  }
+
+  Klass* k = java_lang_Class::as_Klass(orig_mirror); // is null Universe::void_mirror();
+  if (CDSConfig::is_dumping_reflection_data() &&
+      k != nullptr && k->is_instance_klass() &&
+      java_lang_Class::reflection_data(orig_mirror) != nullptr &&
+      AOTConstantPoolResolver::can_archive_reflection_data(InstanceKlass::cast(k))) {
+    java_lang_Class::set_reflection_data(scratch_m, java_lang_Class::reflection_data(orig_mirror));
   }
 }
 
@@ -934,9 +938,15 @@ void HeapShared::write_heap(ArchiveHeapInfo *heap_info) {
 void HeapShared::scan_java_mirror(oop orig_mirror) {
   oop m = scratch_java_mirror(orig_mirror);
   if (m != nullptr) { // nullptr if for custom class loader
-    copy_java_mirror_hashcode(orig_mirror, m);
+    copy_java_mirror(orig_mirror, m);
     bool success = archive_reachable_objects_from(1, _dump_time_special_subgraph, m);
     assert(success, "sanity");
+
+    oop extra;
+    if ((extra = java_lang_Class::reflection_data(m)) != nullptr) {
+      success = archive_reachable_objects_from(1, _dump_time_special_subgraph, extra);
+      assert(success, "sanity");
+    }
   }
 }
 
@@ -1109,7 +1119,7 @@ void KlassSubGraphInfo::check_allowed_klass(InstanceKlass* ik) {
   ResourceMark rm;
   log_error(aot, heap)("Class %s not allowed in archive heap. Must be in java.base%s%s",
                        ik->external_name(), lambda_msg, testcls_msg);
-  MetaspaceShared::unrecoverable_writing_error();
+  AOTMetaspace::unrecoverable_writing_error();
 }
 
 bool KlassSubGraphInfo::is_non_early_klass(Klass* k) {
@@ -1469,7 +1479,7 @@ const ArchivedKlassSubGraphInfoRecord*
 HeapShared::resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAPS) {
   assert(!CDSConfig::is_dumping_heap(), "Should not be called when dumping heap");
 
-  if (!k->is_shared()) {
+  if (!k->in_aot_cache()) {
     return nullptr;
   }
   unsigned int hash = SystemDictionaryShared::hash_for_shared_dictionary_quick(k);
@@ -1523,7 +1533,7 @@ HeapShared::resolve_or_init_classes_for_subgraph_of(Klass* k, bool do_init, TRAP
     if (klasses != nullptr) {
       for (int i = 0; i < klasses->length(); i++) {
         Klass* klass = klasses->at(i);
-        if (!klass->is_shared()) {
+        if (!klass->in_aot_cache()) {
           return nullptr;
         }
         resolve_or_init(klass, do_init, CHECK_NULL);
@@ -1730,7 +1740,7 @@ void HeapShared::exit_on_error() {
     }
   }
   debug_trace();
-  MetaspaceShared::unrecoverable_writing_error();
+  AOTMetaspace::unrecoverable_writing_error();
 }
 
 // (1) If orig_obj has not been archived yet, archive it.
@@ -1772,7 +1782,7 @@ bool HeapShared::walk_one_object(PendingOopStack* stack, int level, KlassSubGrap
     ResourceMark rm;
     log_error(aot, heap)("Cannot archive object " PTR_FORMAT " of class %s", p2i(orig_obj), orig_obj->klass()->external_name());
     debug_trace();
-    MetaspaceShared::unrecoverable_writing_error();
+    AOTMetaspace::unrecoverable_writing_error();
   }
 
   if (log_is_enabled(Debug, aot, heap) && java_lang_Class::is_instance(orig_obj)) {
@@ -1825,7 +1835,7 @@ bool HeapShared::walk_one_object(PendingOopStack* stack, int level, KlassSubGrap
       // defined at the top of this file.
       log_error(aot, heap)("(%d) Unknown java.lang.Class object is in the archived sub-graph", level);
       debug_trace();
-      MetaspaceShared::unrecoverable_writing_error();
+      AOTMetaspace::unrecoverable_writing_error();
     }
   }
 
@@ -1855,7 +1865,7 @@ bool HeapShared::walk_one_object(PendingOopStack* stack, int level, KlassSubGrap
         // We don't know how to handle an object that has been archived, but some of its reachable
         // objects cannot be archived. Bail out for now. We might need to fix this in the future if
         // we have a real use case.
-        exit_on_error();
+        AOTMetaspace::unrecoverable_writing_error();
       }
     }
   }

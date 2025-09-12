@@ -24,13 +24,13 @@
 
 #include "cds/aotLogging.hpp"
 #include "cds/aotMapLogger.hpp"
+#include "cds/aotMetaspace.hpp"
 #include "cds/archiveHeapLoader.hpp"
 #include "cds/cds_globals.hpp"
 #include "cds/cdsConfig.hpp"
 #include "cds/classListWriter.hpp"
 #include "cds/filemap.hpp"
 #include "cds/heapShared.hpp"
-#include "cds/metaspaceShared.hpp"
 #include "classfile/classLoaderDataShared.hpp"
 #include "classfile/moduleEntry.hpp"
 #include "classfile/systemDictionaryShared.hpp"
@@ -715,12 +715,6 @@ bool CDSConfig::check_vm_args_consistency(bool patch_mod_javabase, bool mode_fla
       AOTCodeCache::disable_caching();
     }
   }
-
-#ifdef _WINDOWS
-  // This optimization is not working on Windows for some reason. See JDK-8338604.
-  FLAG_SET_ERGO(ArchiveReflectionData, false);
-#endif
-
   if (is_dumping_static_archive()) {
     if (is_dumping_preimage_static_archive()) {
       // Don't tweak execution mode during AOT training run
@@ -858,7 +852,7 @@ void CDSConfig::prepare_for_dumping() {
 #define __THEMSG " is unsupported when base CDS archive is not loaded. Run with -Xlog:cds for more info."
     if (RecordDynamicDumpInfo) {
       aot_log_error(aot)("-XX:+RecordDynamicDumpInfo%s", __THEMSG);
-      MetaspaceShared::unrecoverable_loading_error();
+      AOTMetaspace::unrecoverable_loading_error();
     } else {
       assert(ArchiveClassesAtExit != nullptr, "sanity");
       aot_log_warning(aot)("-XX:ArchiveClassesAtExit" __THEMSG);

@@ -112,7 +112,7 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
       if (ctd != nullptr) {
         // Can't load normal AOT code - not all dependancies are ready,
         // request normal compilation
-        requires_online_compilation = (ctd->init_deps_left() > 0);
+        requires_online_compilation = (ctd->init_deps_left_acquire() > 0);
       }
       if (requires_online_compilation && recompile) {
         // Wait when dependencies are ready to load normal AOT code
@@ -132,11 +132,6 @@ void CompilationPolicy::maybe_compile_early(const methodHandle& m, TRAPS) {
       }
     }
   }
-}
-
-void CompilationPolicy::maybe_compile_early_after_init(const methodHandle& m, TRAPS) {
-  assert(m->method_holder()->is_initialized(), "Should be called after class initialization");
-  maybe_compile_early(m, THREAD);
 }
 
 void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
@@ -168,7 +163,7 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
       if (mtd != nullptr) {
         CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
         if (ctd != nullptr) {
-          requires_online_compilation = (ctd->init_deps_left() > 0);
+          requires_online_compilation = (ctd->init_deps_left_acquire() > 0);
         }
       }
     }
@@ -176,7 +171,7 @@ void CompilationPolicy::compile_if_required(const methodHandle& m, TRAPS) {
   }
 }
 
-void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS) {
+void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, JavaThread* current) {
   if (!klass->has_init_deps_processed()) {
     ResourceMark rm;
     log_debug(training)("Replay training: %s", klass->external_name());
@@ -189,11 +184,11 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
 
       if (AOTCompileEagerly) {
         ktd->iterate_comp_deps([&](CompileTrainingData* ctd) {
-          if (ctd->init_deps_left() == 0) {
+          if (ctd->init_deps_left_acquire() == 0) {
             MethodTrainingData* mtd = ctd->method();
             if (mtd->has_holder()) {
-              const methodHandle mh(THREAD, const_cast<Method*>(mtd->holder()));
-              CompilationPolicy::maybe_compile_early(mh, THREAD);
+              const methodHandle mh(current, const_cast<Method*>(mtd->holder()));
+              CompilationPolicy::maybe_compile_early(mh, current);
             }
           }
         });
@@ -202,17 +197,10 @@ void CompilationPolicy::replay_training_at_init_impl(InstanceKlass* klass, TRAPS
   }
 }
 
-void CompilationPolicy::flush_replay_training_at_init(TRAPS) {
-   MonitorLocker locker(THREAD, TrainingReplayQueue_lock);
-   while (!_training_replay_queue.is_empty_unlocked()) {
-     locker.wait(); // let the replay training thread drain the queue
-   }
-}
-
-void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, TRAPS) {
+void CompilationPolicy::replay_training_at_init(InstanceKlass* klass, JavaThread* current) {
   assert(klass->is_initialized(), "");
-  if (TrainingData::have_data() && klass->is_shared()) {
-    _training_replay_queue.push(klass, TrainingReplayQueue_lock, THREAD);
+  if (TrainingData::have_data() && klass->in_aot_cache()) {
+    _training_replay_queue.push(klass, TrainingReplayQueue_lock, current);
   }
 }
 
@@ -227,11 +215,11 @@ void CompilationPolicyUtils::Queue<InstanceKlass>::print_on(outputStream* st) {
   }
 }
 
-void CompilationPolicy::replay_training_at_init_loop(TRAPS) {
-  while (!CompileBroker::is_compilation_disabled_forever() || AOTVerifyTrainingData) {
-    InstanceKlass* ik = _training_replay_queue.pop(TrainingReplayQueue_lock, THREAD);
+void CompilationPolicy::replay_training_at_init_loop(JavaThread* current) {
+  while (!CompileBroker::is_compilation_disabled_forever()) {
+    InstanceKlass* ik = _training_replay_queue.pop(TrainingReplayQueue_lock, current);
     if (ik != nullptr) {
-      replay_training_at_init_impl(ik, THREAD);
+      replay_training_at_init_impl(ik, current);
     }
   }
 }
@@ -492,7 +480,7 @@ void CompilationPolicy::print_training_data_on(outputStream* st,  const char* pr
     if (ctd == nullptr) {
       st->print("null");
     } else {
-      st->print("%d", ctd->init_deps_left());
+      st->print("%d", ctd->init_deps_left_acquire());
     }
   }
 }
@@ -517,7 +505,7 @@ void CompilationPolicy::print_event_on(outputStream *st, EventType type, Method*
     st->print("force-compile");
     break;
   case FORCE_RECOMPILE:
-    tty->print("force-recompile");
+    st->print("force-recompile");
     break;
   case REMOVE_FROM_QUEUE:
     st->print("remove-from-queue");
@@ -552,7 +540,7 @@ void CompilationPolicy::print_event_on(outputStream *st, EventType type, Method*
   if (m->prev_time() == 0) st->print("n/a");
   else st->print("%f", m->rate());
 
-  RecompilationPolicy::print_load_average();
+  RecompilationPolicy::print_load_average(st);
 
   st->print(" k=%.2lf,%.2lf", threshold_scale(CompLevel_full_profile, Tier3LoadFeedback),
                               threshold_scale(CompLevel_full_optimization, Tier4LoadFeedback));
@@ -1035,7 +1023,7 @@ void CompilationPolicy::compile(const methodHandle& mh, int bci, CompLevel level
       if (mtd != nullptr) {
         CompileTrainingData* ctd = mtd->last_toplevel_compile(level);
         if (ctd != nullptr) {
-          requires_online_compilation = (ctd->init_deps_left() > 0);
+          requires_online_compilation = (ctd->init_deps_left_acquire() > 0);
         }
       }
     }
@@ -1264,7 +1252,7 @@ CompLevel CompilationPolicy::trained_transition_from_none(const methodHandle& me
   CompileTrainingData* ctd = mtd->last_toplevel_compile(CompLevel_full_optimization);
   assert(ctd != nullptr, "Should have CTD for CompLevel_full_optimization");
   // With SkipTier2IfPossible and all deps satisfied, go to level 4 immediately
-  if (SkipTier2IfPossible && ctd->init_deps_left() == 0) {
+  if (SkipTier2IfPossible && ctd->init_deps_left_acquire() == 0) {
     if (method->method_data() == nullptr) {
       create_mdo(method, THREAD);
     }
@@ -1292,7 +1280,7 @@ CompLevel CompilationPolicy::trained_transition_from_limited_profile(const metho
   assert(training_has_profile, "Have to have a profile to be here");
   // Check if the method is ready
   CompileTrainingData* ctd = mtd->last_toplevel_compile(CompLevel_full_optimization);
-  if (ctd != nullptr && ctd->init_deps_left() == 0) {
+  if (ctd != nullptr && ctd->init_deps_left_acquire() == 0) {
     if (method->method_data() == nullptr) {
       create_mdo(method, THREAD);
     }
