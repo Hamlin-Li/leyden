@@ -2026,7 +2026,7 @@ int Deoptimization::last_frame_adjust(int callee_parameters, int callee_locals) 
 //------------------------------generate_deopt_blob----------------------------
 void SharedRuntime::generate_deopt_blob() {
   const char* name = SharedRuntime::stub_name(StubId::shared_deopt_id);
-  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::SharedBlob, (uint)StubId::shared_deopt_id, name);
+  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::SharedBlob, BlobId::shared_deopt_id);
   if (blob != nullptr) {
     _deopt_blob = blob->as_deoptimization_blob();
     return;
@@ -2401,7 +2401,7 @@ void SharedRuntime::generate_deopt_blob() {
   }
 #endif
 
-  AOTCodeCache::store_code_blob(*_deopt_blob, AOTCodeEntry::SharedBlob, (uint)StubId::shared_deopt_id, name);
+  AOTCodeCache::store_code_blob(*_deopt_blob, AOTCodeEntry::SharedBlob, BlobId::shared_deopt_id);
 }
 
 // Number of stack slots between incoming argument block and the start of
@@ -2429,7 +2429,7 @@ SafepointBlob* SharedRuntime::generate_handler_blob(StubId id, address call_ptr)
   assert(is_polling_page_id(id), "expected a polling page stub id");
 
   const char* name = SharedRuntime::stub_name(id);
-  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::SharedBlob, (uint)id, name);
+  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::SharedBlob, StubInfo::blob(id));
   if (blob != nullptr) {
     return blob->as_safepoint_blob();
   }
@@ -2546,7 +2546,7 @@ SafepointBlob* SharedRuntime::generate_handler_blob(StubId id, address call_ptr)
   // Fill-out other meta info
   SafepointBlob* sp_blob = SafepointBlob::create(&buffer, oop_maps, frame_size_in_words);
 
-  AOTCodeCache::store_code_blob(*sp_blob, AOTCodeEntry::SharedBlob, (uint)id, name);
+  AOTCodeCache::store_code_blob(*sp_blob, AOTCodeEntry::SharedBlob, StubInfo::blob(id));
   return sp_blob;
 }
 
@@ -2563,7 +2563,7 @@ RuntimeStub* SharedRuntime::generate_resolve_blob(StubId id, address destination
   assert(is_resolve_id(id), "expected a resolve stub id");
 
   const char* name = SharedRuntime::stub_name(id);
-  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::SharedBlob, (uint)id, name);
+  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::SharedBlob, StubInfo::blob(id));
   if (blob != nullptr) {
     return blob->as_runtime_stub();
   }
@@ -2643,7 +2643,7 @@ RuntimeStub* SharedRuntime::generate_resolve_blob(StubId id, address destination
   // return the  blob
   RuntimeStub* rs_blob = RuntimeStub::new_runtime_stub(name, &buffer, frame_complete, frame_size_in_words, oop_maps, true);
 
-  AOTCodeCache::store_code_blob(*rs_blob, AOTCodeEntry::SharedBlob, (uint)id, name);
+  AOTCodeCache::store_code_blob(*rs_blob, AOTCodeEntry::SharedBlob, StubInfo::blob(id));
   return rs_blob;
 }
 
@@ -2667,7 +2667,7 @@ RuntimeStub* SharedRuntime::generate_throw_exception(StubId id, address runtime_
   assert(is_throw_id(id), "expected a throw stub id");
 
   const char* name = SharedRuntime::stub_name(id);
-  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::SharedBlob, (uint)id, name);
+  CodeBlob* blob = AOTCodeCache::load_code_blob(AOTCodeEntry::SharedBlob, StubInfo::blob(id));
   if (blob != nullptr) {
     return blob->as_runtime_stub();
   }
@@ -2752,7 +2752,7 @@ RuntimeStub* SharedRuntime::generate_throw_exception(StubId id, address runtime_
                                   oop_maps, false);
   assert(stub != nullptr, "create runtime stub fail!");
 
-  AOTCodeCache::store_code_blob(*stub, AOTCodeEntry::SharedBlob, (uint)id, name);
+  AOTCodeCache::store_code_blob(*stub, AOTCodeEntry::SharedBlob, StubInfo::blob(id));
   return stub;
 }
 
