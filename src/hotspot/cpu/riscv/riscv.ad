@@ -1238,7 +1238,12 @@ int MachCallRuntimeNode::ret_addr_offset() {
   if (CodeCache::contains(_entry_point)) {
     return 2 * NativeInstruction::instruction_size;
   } else {
+    if (true) {
     return 8 * NativeInstruction::instruction_size;
+    } else {
+      // check riscv_enc_java_to_runtime.
+      return 10 * NativeInstruction::instruction_size;
+    }
   }
 }
 
@@ -2267,6 +2272,8 @@ encode %{
       } else {
         assert(rtype == relocInfo::none || rtype == relocInfo::external_word_type,
               "unexpected reloc type, %d", rtype);
+        assert(((uint64_t)con >> 48) == 0, "must");
+        assert(con >= (address)(uintptr_t)os::vm_page_size(), "must");
         __ mv(dst_reg, $src$$constant);
       }
     }
@@ -2429,6 +2436,7 @@ encode %{
     // a movptr+jalr pair which loads the absolute address into a register.
     address entry = (address)$meth$$method;
     if (CodeCache::contains(entry)) {
+      // TODO
       __ far_call(Address(entry, relocInfo::runtime_call_type));
       __ post_call_nop();
     } else {
@@ -2436,10 +2444,20 @@ encode %{
       // Make the anchor frame walkable
       __ la(t0, retaddr);
       __ sd(t0, Address(xthread, JavaThread::last_Java_pc_offset()));
+      if (true) {
       int32_t offset = 0;
       // No relocation needed
       __ movptr(t1, entry, offset, t0); // lui + lui + slli + add
       __ jalr(t1, offset);
+      } else {
+        // int32_t offset = 0;
+        // No relocation needed ??
+        // TODO
+        // __ movptr(t1, RuntimeAddress(entry), t0); // lui + lui + slli + add
+        // __ jalr(t1);
+        __ la(t1, RuntimeAddress(entry));
+        __ jalr(t1);
+      }
       __ bind(retaddr);
       __ post_call_nop();
     }
